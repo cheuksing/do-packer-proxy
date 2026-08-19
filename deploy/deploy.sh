@@ -25,8 +25,15 @@ SIZE="${SIZE:-s-1vcpu-512mb-10gb}"          # cheapest droplet
 IMAGE="${IMAGE:-ubuntu-24-04-x64}"
 DROPLET_NAME="${DROPLET_NAME:-vless-reality-$(date +%m%d%H%M)}"
 SSH_PORT="${SSH_PORT:-22022}"
-REALITY_SNI="${REALITY_SNI:-m365.cloud.microsoft}"
+REALITY_SNI="${REALITY_SNI:-www.apple.com}"
 REALITY_DEST="${REALITY_DEST:-${REALITY_SNI}:443}"
+
+# --------------------------------------------------------- logging
+# Everything is mirrored to $LOG_FILE so progress is visible even when the
+# script is run non-interactively (e.g. piped or backgrounded).
+mkdir -p "$GEN_DIR"
+LOG_FILE="$GEN_DIR/deploy.log"
+exec > >(tee "$LOG_FILE") 2>&1
 
 # ------------------------------------------------------------------ checks
 DO_API_KEY="${DO_API_KEY:-${DIGITALOCEAN_ACCESS_TOKEN:-}}"
@@ -112,15 +119,16 @@ echo "    droplet id: $DROPLET_ID  public IP: $IP"
 # A fresh firewall is created per droplet (attached at creation), so only
 # firewall:create + firewall:read scopes are needed - never firewall:update.
 FW_NAME="${DROPLET_NAME}-${DROPLET_ID}-fw"
-INBOUND_RULES="protocol:tcp,ports:443,address:0.0.0.0/0;protocol:tcp,ports:${SSH_PORT},address:0.0.0.0/0"
-OUTBOUND_RULES="protocol:tcp,ports:1-65535,address:0.0.0.0/0;protocol:udp,ports:1-65535,address:0.0.0.0/0"
 
 configure_firewall() {
   local fw_id
-  fw_id=$(doctl compute firewall get "$FW_NAME" --format ID --no-header 2>/dev/null) || fw_id=""
+  fw_id=$(doctl compute firewall list --format ID,Name --no-header 2>/dev/null | awk -v n="$FW_NAME" '$2==n {print $1; exit}')
   if [ -z "$fw_id" ]; then
+    # doctl --inbound-rules: comma-separated key-values per rule, rules separated
+    # by a single space (strings.Split(s, " ") in doctl)
     fw_id=$(doctl compute firewall create --name "$FW_NAME" \
-      --inbound-rules "$INBOUND_RULES" --outbound-rules "$OUTBOUND_RULES" \
+      --inbound-rules "protocol:tcp,ports:443,address:0.0.0.0/0 protocol:tcp,ports:${SSH_PORT},address:0.0.0.0/0" \
+      --outbound-rules "protocol:tcp,ports:1-65535,address:0.0.0.0/0 protocol:udp,ports:1-65535,address:0.0.0.0/0" \
       --droplet-ids "$DROPLET_ID" --format ID --no-header 2>/dev/null) || return 1
     echo "    firewall created + attached: $FW_NAME"
   else
@@ -147,22 +155,31 @@ fi
 # ------------------------------------------------ 5. wait for SSH (22022)
 echo "[5/7] waiting for sshd on port $SSH_PORT and cloud-init completion (up to ~20 min on small droplets)..."
 SSH_OK=0
+CI_OUT=""
 for i in $(seq 1 120); do
-  if ssh "${ssh_opts[@]}" -o ConnectTimeout=5 "$DEPLOY_USER@$IP" \
-      'cloud-init status | grep -q "^status: done"' 2>/dev/null; then
-    SSH_OK=1
-    break
-  fi
+  CI_OUT=$(ssh "${ssh_opts[@]}" -o ConnectTimeout=5 "$DEPLOY_USER@$IP" 'cloud-init status' 2>/dev/null || true)
+  case "$CI_OUT" in
+    *"status: done"*)  SSH_OK=1; break ;;
+    *"status: error"*) break ;;
+  esac
   if [ $((i % 12)) -eq 0 ]; then
-    echo "    ...still waiting ($((i * 10 / 60)) min elapsed)"
+    echo "    ...still waiting ($((i * 10 / 60)) min elapsed, cloud-init: $(echo "$CI_OUT" | head -1))"
   fi
   sleep 10
 done
-[ "$SSH_OK" = 1 ] || {
+
+if [ "$SSH_OK" = 1 ]; then
+  :
+elif echo "$CI_OUT" | grep -q "status: error"; then
+  echo "FATAL: cloud-init reported an error - tail of /var/log/cloud-init-output.log:" >&2
+  ssh "${ssh_opts[@]}" "$DEPLOY_USER@$IP" 'tail -n 60 /var/log/cloud-init-output.log' 2>&1 | sed 's/^/    /'
+  echo "FATAL: deployment aborted (see log above)" >&2
+  exit 1
+else
   echo "FATAL: ssh not reachable on $IP:$SSH_PORT after 20 min." >&2
   echo "       Check progress via the DO console (root): cloud-init status; tail /var/log/cloud-init-output.log" >&2
   exit 1
-}
+fi
 
 # ------------------------------------------------------------ 5. verify
 echo "[6/7] verification (no admin privileges required):"

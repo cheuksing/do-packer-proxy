@@ -2,7 +2,7 @@
 
 Deploys a single hardened Ubuntu 24.04 droplet (DigitalOcean, `sgp1`, cheapest size)
 running Xray-core with a VLESS + REALITY inbound on `443`, camouflaged as
-`m365.cloud.microsoft`.
+`www.apple.com`.
 
 ## Account model (dual-account)
 
@@ -141,7 +141,7 @@ Hand a new client these parameters: server IP, port 443, its UUID,
   - `systemctl is-active ssh xray fail2ban`
   - `ss -tln` → only 443 + `SSH_PORT` listening
   - `tail /var/log/cloud-init-output.log` → bootstrap output
-- REALITY dest reachable: `curl -I https://m365.cloud.microsoft` (should answer like a normal site)
+- REALITY dest reachable: `curl -I https://www.apple.com` (should answer like a normal site)
 - `sudo ufw status verbose` / `sudo fail2ban-client status` → console as `admin-user`
 
 ## Troubleshooting

@@ -164,9 +164,9 @@ write_files:
 
       if [ ! -f "$REAL_ENV" ]; then
         echo "[xray] generating REALITY credentials (server-side, never leaves this host)"
-        KEYPAIR=$(/usr/local/bin/xray x25519 -i)
-        PRIVATE_KEY=$(echo "$KEYPAIR" | awk '/Private key:/{print $3}')
-        PUBLIC_KEY=$(echo "$KEYPAIR" | awk '/Public key:/{print $3}')
+        KEYPAIR=$(/usr/local/bin/xray x25519)
+        PRIVATE_KEY=$(echo "$KEYPAIR" | awk '/^PrivateKey:/{print $2}')
+        PUBLIC_KEY=$(echo "$KEYPAIR" | awk '/^Password \(PublicKey\):/{print $3}')
         UUID=$(cat /proc/sys/kernel/random/uuid)
         SHORT_ID=$(openssl rand -hex 8)
         umask 077
@@ -217,10 +217,14 @@ write_files:
       echo "[xray] listening sockets:"
       ss -tlnp | grep -E ":({{SSH_PORT}}|443)\b" || true
 
+      echo "[fail2ban] validating config"
+      fail2ban-client -t
       systemctl enable --now fail2ban >/dev/null
       systemctl restart fail2ban >/dev/null
 
 runcmd:
+  # make the boot log readable by deploy-user so deploy.sh can surface failures
+  - chmod 0644 /var/log/cloud-init-output.log
   - [ systemctl, restart, ssh ]
   - ufw default deny incoming
   - ufw default allow outgoing
