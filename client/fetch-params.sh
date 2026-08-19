@@ -26,8 +26,15 @@ SSH_KEY="${SSH_KEY:-}"
 if [ -z "$SERVER_ADDR" ]; then
   read -r -p "server address (IP or hostname): " SERVER_ADDR
 fi
+# resolve relative SSH_KEY against client/ (not the caller's cwd)
+if [ -n "$SSH_KEY" ] && [ "${SSH_KEY#/}" = "$SSH_KEY" ] && [ ! -f "$SSH_KEY" ] && [ -f "$CLIENT_DIR/$SSH_KEY" ]; then
+  SSH_KEY="$CLIENT_DIR/$SSH_KEY"
+fi
 if [ -z "$SSH_KEY" ] || [ ! -f "$SSH_KEY" ]; then
   read -r -p "path to SSH private key for $SSH_USER@$SERVER_ADDR (port $SSH_PORT): " SSH_KEY
+fi
+if [ -n "$SSH_KEY" ] && [ "${SSH_KEY#/}" = "$SSH_KEY" ] && [ ! -f "$SSH_KEY" ] && [ -f "$CLIENT_DIR/$SSH_KEY" ]; then
+  SSH_KEY="$CLIENT_DIR/$SSH_KEY"
 fi
 [ -f "$SSH_KEY" ] || { echo "FATAL: SSH key not found: $SSH_KEY" >&2; exit 1; }
 

@@ -76,6 +76,8 @@ is gitignored and stays on the deploy machine. To use this client machine you
 either copy that key over securely (e.g. `scp` from the deploy machine), or add
 a new public key to the server's `deploy-user` (root console →
 edit `/home/deploy-user/.ssh/authorized_keys`).
+`SSH_KEY` in `.env` may be absolute or relative to the `client/` directory
+(e.g. `../deploy/keys/deploy_user_ed25519`).
 
 ### B. Manual
 
