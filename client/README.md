@@ -19,20 +19,13 @@ there independently; it does not need the deploy machine or its SSH key.
 
 ## 1. Install xray-core
 
-No dependencies other than `curl` (and `unzip` if downloading manually) - config
-rendering and fetching are pure shell (`bash`).
+No dependencies other than `curl`.
 
 ### macOS
 
 ```bash
 # Homebrew (recommended)
 brew install xray
-
-# or manual download (no brew):
-curl -LO "https://github.com/XTLS/Xray-core/releases/latest/download/xray-macos-$(uname -m).zip"
-unzip xray-macos-$(uname -m).zip -d xray-tmp
-sudo mv xray-tmp/xray /usr/local/bin/
-rm -rf xray-tmp xray-macos-$(uname -m).zip
 ```
 
 ### Linux (Debian / Ubuntu)
@@ -40,12 +33,6 @@ rm -rf xray-tmp xray-macos-$(uname -m).zip
 ```bash
 # Official installer (detects distro/arch)
 sudo bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
-
-# or manual download:
-curl -LO "https://github.com/XTLS/Xray-core/releases/latest/download/xray-linux-$(uname -m).zip"
-unzip xray-linux-$(uname -m).zip -d xray-tmp
-sudo mv xray-tmp/xray /usr/local/bin/
-rm -rf xray-tmp xray-linux-$(uname -m).zip
 ```
 
 Verify: `xray version` should print a version.
