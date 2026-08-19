@@ -1,15 +1,15 @@
 # VLESS REALITY Client (macOS / Linux)
 
-Local SOCKS proxy that tunnels all traffic through the deployed VLESS+REALITY
-server. Uses `xray-core` - the same binary as the server.
+Local SOCKS **and** HTTP proxy that tunnels all traffic through the deployed
+VLESS+REALITY server. Uses `xray-core` - the same binary as the server.
 
 ```
 client/
 ├── .env.example           # all options (copy to .env)
-├── config.json.template   # SOCKS inbound + VLESS/REALITY outbound
+├── config.json.template   # SOCKS + HTTP inbounds, VLESS/REALITY outbound
 ├── start.sh               # render config from .env, run xray (foreground)
 ├── stop.sh                # stop the client
-├── status.sh              # is it running? is the SOCKS port up?
+├── status.sh              # is it running? are the proxy ports up?
 └── fetch-params.sh        # pull connection params from the server into .env
 ```
 
@@ -26,7 +26,7 @@ rendering and fetching are pure shell (`bash`).
 
 ```bash
 # Homebrew (recommended)
-brew install xray-core
+brew install xray
 
 # or manual download (no brew):
 curl -LO "https://github.com/XTLS/Xray-core/releases/latest/download/xray-macos-$(uname -m).zip"
@@ -89,16 +89,24 @@ into `.env` yourself.
 
 ```bash
 ./start.sh      # renders client/.generated/config.json, runs xray in foreground
-./status.sh     # running? SOCKS port listening?
+./status.sh     # running? SOCKS/HTTP ports listening?
 ./stop.sh       # stop the client
 ```
 
-## 4. Route traffic through the SOCKS port
+## 4. Route traffic through the proxy
 
-One-off test:
+Two local endpoints are exposed (both tunnel to the server):
+
+| Endpoint | URL | Use for |
+|---|---|---|
+| SOCKS | `socks5://127.0.0.1:1080` | anything (curl, browsers, apps) |
+| HTTP | `http://127.0.0.1:1081` | apps that only support HTTP proxies |
+
+One-off tests:
 
 ```bash
 curl -x socks5h://127.0.0.1:1080 https://ipinfo.io/ip
+curl -x http://127.0.0.1:1081 https://ipinfo.io/ip
 ```
 
 Whole terminal session (macOS/Linux):
@@ -107,7 +115,8 @@ Whole terminal session (macOS/Linux):
 export all_proxy=socks5h://127.0.0.1:1080
 ```
 
-Or point your app/browser's SOCKS proxy setting at `127.0.0.1:1080`.
+Or point your app/browser's proxy setting at `127.0.0.1:1080` (SOCKS) or
+`127.0.0.1:1081` (HTTP).
 
 ## Troubleshooting
 
@@ -117,5 +126,5 @@ Or point your app/browser's SOCKS proxy setting at `127.0.0.1:1080`.
   re-run `./fetch-params.sh`
 - `fetch-params.sh` fails to connect -> wrong `SSH_PORT`/`SSH_KEY`, or the key is
   not authorized for `deploy-user` (see section 2A)
-- SOCKS port already in use -> change `SOCKS_PORT` in `.env`
+- SOCKS/HTTP port already in use -> change `SOCKS_PORT`/`HTTP_PORT` in `.env`
 - Wrong REALITY dest on server -> update `REALITY_SNI` on both server and client

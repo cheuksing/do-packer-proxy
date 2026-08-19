@@ -10,6 +10,12 @@
       "settings": {
         "udp": true
       }
+    },
+    {
+      "listen": "$HTTP_LISTEN",
+      "port": $HTTP_PORT,
+      "protocol": "http",
+      "settings": {}
     }
   ],
   "outbounds": [
