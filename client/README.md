@@ -19,7 +19,8 @@ there independently; it does not need the deploy machine or its SSH key.
 
 ## 1. Install xray-core
 
-Requirements: `curl` (and `unzip` if you download manually).
+No dependencies other than `curl` (and `unzip` if downloading manually) - config
+rendering and fetching are pure shell (`bash`).
 
 ### macOS
 
@@ -34,12 +35,6 @@ sudo mv xray-tmp/xray /usr/local/bin/
 rm -rf xray-tmp xray-macos-$(uname -m).zip
 ```
 
-Also install python3 for config rendering (comes with Xcode CLT):
-
-```bash
-xcode-select --install
-```
-
 ### Linux (Debian / Ubuntu)
 
 ```bash
@@ -51,10 +46,6 @@ curl -LO "https://github.com/XTLS/Xray-core/releases/latest/download/xray-linux-
 unzip xray-linux-$(uname -m).zip -d xray-tmp
 sudo mv xray-tmp/xray /usr/local/bin/
 rm -rf xray-tmp xray-linux-$(uname -m).zip
-```
-
-```bash
-sudo apt install -y python3
 ```
 
 Verify: `xray version` should print a version.

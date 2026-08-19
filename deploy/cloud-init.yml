@@ -3,7 +3,9 @@
 # Rendered by deploy.sh: {{...}} markers are substituted at deploy time.
 
 package_update: true
-package_upgrade: true
+# NOTE: no full package_upgrade at boot - it takes ~30-40 min on the smallest
+# droplet. Security patches are applied by unattended-upgrades (see below).
+package_upgrade: false
 
 packages:
   - ufw

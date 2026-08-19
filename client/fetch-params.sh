@@ -50,31 +50,28 @@ PORT=$(parse "port")
   exit 1
 }
 
-python3 - "$ENV_FILE" "$SERVER_ADDR" "$PORT" "$UUID" "$PUB" "$SHORT" "$SNI" <<'PYEOF'
-import sys
+# update .env in place (preserve comments and unrelated keys)
+TMP_ENV=$(mktemp)
+: > "$TMP_ENV"
+SEEN=""
+while IFS= read -r line || [ -n "$line" ]; do
+  key="${line%%=*}"
+  case "$key" in
+    SERVER_ADDR)        echo "SERVER_ADDR=$SERVER_ADDR" >> "$TMP_ENV"; SEEN="$SEEN|SERVER_ADDR|" ;;
+    SERVER_PORT)        echo "SERVER_PORT=$PORT" >> "$TMP_ENV"; SEEN="$SEEN|SERVER_PORT|" ;;
+    UUID)               echo "UUID=$UUID" >> "$TMP_ENV"; SEEN="$SEEN|UUID|" ;;
+    REALITY_PUBLIC_KEY) echo "REALITY_PUBLIC_KEY=$PUB" >> "$TMP_ENV"; SEEN="$SEEN|REALITY_PUBLIC_KEY|" ;;
+    REALITY_SHORT_ID)   echo "REALITY_SHORT_ID=$SHORT" >> "$TMP_ENV"; SEEN="$SEEN|REALITY_SHORT_ID|" ;;
+    REALITY_SNI)        echo "REALITY_SNI=$SNI" >> "$TMP_ENV"; SEEN="$SEEN|REALITY_SNI|" ;;
+    *)                  echo "$line" >> "$TMP_ENV" ;;
+  esac
+done < "$ENV_FILE"
+for key in SERVER_ADDR SERVER_PORT UUID REALITY_PUBLIC_KEY REALITY_SHORT_ID REALITY_SNI; do
+  case "$SEEN" in
+    *"|$key|"*) ;;
+    *) echo "$key=${!key}" >> "$TMP_ENV" ;;
+  esac
+done
+mv "$TMP_ENV" "$ENV_FILE"
 
-env_file, addr, port, uuid, pub, short, sni = sys.argv[1:8]
-updates = {
-    "SERVER_ADDR": addr,
-    "SERVER_PORT": port,
-    "UUID": uuid,
-    "REALITY_PUBLIC_KEY": pub,
-    "REALITY_SHORT_ID": short,
-    "REALITY_SNI": sni,
-}
-lines, seen = [], set()
-for line in open(env_file):
-    key = line.split("=", 1)[0]
-    if key in updates:
-        lines.append(f"{key}={updates[key]}")
-        seen.add(key)
-    else:
-        lines.append(line.rstrip("\n"))
-for k, v in updates.items():
-    if k not in seen:
-        lines.append(f"{k}={v}")
-open(env_file, "w").write("\n".join(lines) + "\n")
-print(f"updated {env_file}")
-PYEOF
-
-echo "done - run ./start.sh to start the client"
+echo "updated $ENV_FILE - run ./start.sh to start the client"

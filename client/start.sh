@@ -35,30 +35,24 @@ command -v xray >/dev/null 2>&1 || {
   echo "FATAL: 'xray' not found in PATH - install it first (see client/README.md)" >&2
   exit 1
 }
-command -v python3 >/dev/null 2>&1 || {
-  echo "FATAL: python3 required to render the config (mac: xcode-select --install; debian/ubuntu: apt install python3)" >&2
-  exit 1
-}
 
 mkdir -p "$GEN_DIR"
 
-python3 - "$TEMPLATE" "$CONFIG" <<'PYEOF'
-import os, re, sys
+# render config from template (pure bash)
+RENDER_VARS=(SERVER_ADDR SERVER_PORT UUID REALITY_PUBLIC_KEY REALITY_SHORT_ID REALITY_SNI SOCKS_LISTEN SOCKS_PORT FINGERPRINT FLOW)
+render_line() {
+  local l="$1" var
+  for var in "${RENDER_VARS[@]}"; do
+    l="${l//\$$var/${!var}}"
+  done
+  printf '%s' "$l"
+}
 
-template, out = sys.argv[1:3]
-t = open(template).read()
-
-def substitute(m):
-    k = m.group(1)
-    v = os.environ.get(k)
-    if v is None:
-        print(f"FATAL: env var {k} is not set", file=sys.stderr)
-        sys.exit(1)
-    return v
-
-t = re.sub(r"\$([A-Z][A-Z0-9_]*)", substitute, t)
-open(out, "w").write(t)
-PYEOF
+{
+  while IFS= read -r line || [ -n "$line" ]; do
+    printf '%s\n' "$(render_line "$line")"
+  done < "$TEMPLATE"
+} > "$CONFIG"
 
 echo "config rendered -> $CONFIG"
 echo "SOCKS proxy: socks5://$SOCKS_LISTEN:$SOCKS_PORT  ->  $SERVER_ADDR:$SERVER_PORT (VLESS+REALITY)"
