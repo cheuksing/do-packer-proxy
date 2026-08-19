@@ -1,0 +1,45 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "listen": "$SOCKS_LISTEN",
+      "port": $SOCKS_PORT,
+      "protocol": "socks",
+      "settings": {
+        "udp": true
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "$SERVER_ADDR",
+            "port": $SERVER_PORT,
+            "users": [
+              {
+                "id": "$UUID",
+                "encryption": "none",
+                "flow": "$FLOW"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "$REALITY_SNI",
+          "fingerprint": "$FINGERPRINT",
+          "publicKey": "$REALITY_PUBLIC_KEY",
+          "shortId": "$REALITY_SHORT_ID"
+        }
+      }
+    }
+  ]
+}

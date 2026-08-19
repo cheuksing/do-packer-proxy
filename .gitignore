@@ -1,0 +1,7 @@
+deploy/keys/
+deploy/.generated/
+deploy/.env
+client/.env
+client/.generated/
+client/xray.pid
+.env

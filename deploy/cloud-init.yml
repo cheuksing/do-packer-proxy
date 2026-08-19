@@ -1,0 +1,231 @@
+#cloud-config
+# VLESS REALITY proxy droplet - base OS hardening (applied once at first boot)
+# Rendered by deploy.sh: {{...}} markers are substituted at deploy time.
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - ufw
+  - fail2ban
+  - unattended-upgrades
+  - curl
+  - openssl
+  - gettext-base
+
+ssh_pwauth: false
+
+# Dual-account model:
+#   {{DEPLOY_USER}} - remote access only: SSH key login, NO sudo, no admin power
+#   {{ADMIN_USER}}  - local only: full sudo, blocked from SSH entirely
+users:
+  - name: {{DEPLOY_USER}}
+    shell: /bin/bash
+    lock_passwd: true
+    sudo: null
+    ssh_authorized_keys:
+      - {{ADMIN_SSH_PUBKEY}}
+  - name: {{ADMIN_USER}}
+    groups: [sudo]
+    shell: /bin/bash
+    lock_passwd: true
+    sudo: "ALL=(ALL:ALL) NOPASSWD: ALL"
+
+write_files:
+  # ---------- SSH HARDENING ----------
+  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+    permissions: '0644'
+    content: |
+      Port {{SSH_PORT}}
+      PermitRootLogin no
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      ChallengeResponseAuthentication no
+      PubkeyAuthentication yes
+      AuthenticationMethods publickey
+      AllowUsers {{DEPLOY_USER}}
+      DenyUsers {{ADMIN_USER}}
+      PermitEmptyPasswords no
+      X11Forwarding no
+      LoginGraceTime 30
+      MaxAuthTries 3
+      MaxSessions 4
+      MaxStartups 10:30:100
+      ClientAliveInterval 300
+      ClientAliveCountMax 2
+      DebianBanner no
+
+  # ---------- KERNEL HARDENING ----------
+  - path: /etc/sysctl.d/99-hardening.conf
+    permissions: '0644'
+    content: |
+      net.ipv4.conf.all.rp_filter = 1
+      net.ipv4.conf.default.rp_filter = 1
+      net.ipv4.conf.all.accept_redirects = 0
+      net.ipv4.conf.default.accept_redirects = 0
+      net.ipv4.conf.all.send_redirects = 0
+      net.ipv4.conf.default.send_redirects = 0
+      net.ipv4.conf.all.accept_source_route = 0
+      net.ipv4.conf.default.accept_source_route = 0
+      net.ipv4.icmp_echo_ignore_broadcasts = 1
+      net.ipv4.icmp_ignore_bogus_error_responses = 1
+      net.ipv4.tcp_syncookies = 1
+      net.ipv6.conf.all.accept_redirects = 0
+      net.ipv6.conf.default.accept_redirects = 0
+      net.ipv6.conf.all.accept_source_route = 0
+      net.ipv6.conf.default.accept_source_route = 0
+
+  # ---------- UNATTENDED SECURITY UPGRADES ----------
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    permissions: '0644'
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+  - path: /etc/apt/apt.conf.d/50unattended-upgrades
+    permissions: '0644'
+    content: |
+      Unattended-Upgrade::Allowed-Origins {
+        "${distro_id}:${distro_codename}-security";
+      };
+      Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "04:00";
+
+  # ---------- FAIL2BAN ----------
+  - path: /etc/fail2ban/jail.local
+    permissions: '0644'
+    content: |
+      {{FAIL2BAN_JAIL}}
+  - path: /etc/fail2ban/filter.d/xray-reality.conf
+    permissions: '0644'
+    content: |
+      {{FAIL2BAN_FILTER}}
+
+  # ---------- LOGROTATE ----------
+  - path: /etc/logrotate.d/xray
+    permissions: '0644'
+    content: |
+      /var/log/xray/*.log {
+        daily
+        rotate 7
+        compress
+        delaycompress
+        missingok
+        notifempty
+        create 0640 xray nogroup
+        copytruncate
+      }
+
+  # ---------- XRAY FILES (canonical copies spliced in from deploy/xray/) ----------
+  - path: /usr/local/etc/xray/config.json.template
+    permissions: '0644'
+    content: |
+      {{XRAY_CONFIG_TEMPLATE}}
+  - path: /usr/local/etc/xray/xray.service
+    permissions: '0644'
+    content: |
+      {{XRAY_SERVICE}}
+
+  # ---------- XRAY BOOTSTRAP SCRIPT (root-only) ----------
+  - path: /usr/local/sbin/deploy-xray.sh
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      CONF_DIR=/usr/local/etc/xray
+      CONFIG=$CONF_DIR/config.json
+      REAL_ENV=$CONF_DIR/real.env
+      TEMPLATE=$CONF_DIR/config.json.template
+      UNIT_SRC=$CONF_DIR/xray.service
+
+      if [ ! -f "$TEMPLATE" ] || [ ! -f "$UNIT_SRC" ]; then
+        echo "FATAL: xray template/service missing in $CONF_DIR" >&2
+        exit 1
+      fi
+
+      apt-get update -qq
+      apt-get install -y -qq curl openssl >/dev/null
+
+      if [ ! -x /usr/local/bin/xray ]; then
+        VERSION=$(curl -fsS https://api.github.com/repos/XTLS/Xray-core/releases/latest | grep -oP '"tag_name":\s*"\K[^"]+' | head -1)
+        echo "[xray] installing xray-core $VERSION"
+        bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install --version "$VERSION"
+      fi
+
+      if ! id xray >/dev/null 2>&1; then
+        useradd -r -s /usr/sbin/nologin -d /nonexistent -g nogroup xray
+      fi
+
+      install -d -o root -g nogroup -m 0750 "$CONF_DIR"
+
+      if [ ! -f "$REAL_ENV" ]; then
+        echo "[xray] generating REALITY credentials (server-side, never leaves this host)"
+        KEYPAIR=$(/usr/local/bin/xray x25519 -i)
+        PRIVATE_KEY=$(echo "$KEYPAIR" | awk '/Private key:/{print $3}')
+        PUBLIC_KEY=$(echo "$KEYPAIR" | awk '/Public key:/{print $3}')
+        UUID=$(cat /proc/sys/kernel/random/uuid)
+        SHORT_ID=$(openssl rand -hex 8)
+        umask 077
+        {
+          echo "REALITY_UUID=$UUID"
+          echo "REALITY_PRIVATE_KEY=$PRIVATE_KEY"
+          echo "REALITY_PUBLIC_KEY=$PUBLIC_KEY"
+          echo "REALITY_SHORT_ID=$SHORT_ID"
+          echo "REALITY_SNI={{REALITY_SNI}}"
+          echo "REALITY_DEST={{REALITY_DEST}}"
+        } > "$REAL_ENV"
+        {
+          echo "VLESS REALITY client parameters (generated $(date -u +%Y-%m-%dT%H:%M:%SZ))"
+          echo "address: <server-ip>"
+          echo "port: 443"
+          echo "id (UUID): $UUID"
+          echo "flow: xtls-rprx-vision"
+          echo "security: reality"
+          echo "sni: {{REALITY_SNI}}"
+          echo "fingerprint: chrome"
+          echo "publicKey: $PUBLIC_KEY"
+          echo "shortId: $SHORT_ID"
+          echo "privateKey (server): $PRIVATE_KEY"
+        } > /home/{{DEPLOY_USER}}/client-params.txt
+        chown {{DEPLOY_USER}}:{{DEPLOY_USER}} /home/{{DEPLOY_USER}}/client-params.txt
+        chmod 0600 /home/{{DEPLOY_USER}}/client-params.txt
+      fi
+
+      set -a
+      . "$REAL_ENV"
+      set +a
+
+      envsubst < "$TEMPLATE" > "$CONFIG"
+      chown root:nogroup "$CONFIG"
+      chmod 0640 "$CONFIG"
+
+      install -m 0644 "$UNIT_SRC" /etc/systemd/system/xray.service
+
+      touch /var/log/xray/access.log /var/log/xray/error.log
+      chown xray:nogroup /var/log/xray/access.log /var/log/xray/error.log
+      chmod 0640 /var/log/xray/access.log /var/log/xray/error.log
+
+      systemctl daemon-reload
+      systemctl enable --now xray >/dev/null
+      sleep 2
+
+      systemctl is-active xray
+      echo "[xray] listening sockets:"
+      ss -tlnp | grep -E ":({{SSH_PORT}}|443)\b" || true
+
+      systemctl enable --now fail2ban >/dev/null
+      systemctl restart fail2ban >/dev/null
+
+runcmd:
+  - [ systemctl, restart, ssh ]
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 443/tcp
+  - ufw limit {{SSH_PORT}}/tcp
+  - ufw --force enable
+  - apt-get purge -y telnet rsh-client rsh-redone-client ftp tftp tftpd rlogin rcp nfs-common rpcbind avahi-daemon avahi-autoipd cups cups-common cups-browsed snapd build-essential gcc g++ make dpkg-dev cpp manpages-dev 2>/dev/null || true
+  - apt-get autoremove --purge -y 2>/dev/null || true
+  - sysctl --system
+  - bash /usr/local/sbin/deploy-xray.sh
