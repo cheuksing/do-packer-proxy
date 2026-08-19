@@ -6,7 +6,7 @@ VLESS+REALITY server. Uses `xray-core` - the same binary as the server.
 ```
 client/
 ├── .env.example           # all options (copy to .env)
-├── config.json.template   # SOCKS + HTTP inbounds, VLESS/REALITY outbound
+├── config.json.template   # SOCKS + HTTP inbounds, VLESS/REALITY + direct outbounds, split-tunnel routing
 ├── start.sh               # render config from .env, run xray (foreground)
 ├── stop.sh                # stop the client
 ├── status.sh              # is it running? are the proxy ports up?
@@ -117,6 +117,23 @@ export all_proxy=socks5h://127.0.0.1:1080
 
 Or point your app/browser's proxy setting at `127.0.0.1:1080` (SOCKS) or
 `127.0.0.1:1081` (HTTP).
+
+## 5. Split tunnel (only some traffic via the server)
+
+By default the client is a **full tunnel** (everything through the server). To
+only send *some* domains through the server and route everything else **direct**
+(e.g. to tunnel your opencode subscription but keep the rest of your traffic
+local):
+
+```bash
+# client/.env
+SPLIT_DOMAINS=opencode.ai,chatgpt.com,api.openai.com     # comma-separated; subdomains included
+```
+
+With `SPLIT_DOMAINS` set, only matching hostnames go through the VLESS+REALITY
+tunnel; all other traffic through the proxies exits from your local connection.
+Remove the line (or leave it empty) to go back to full tunnel. Restart the
+client (`./stop.sh && ./start.sh`) after changing it.
 
 ## Troubleshooting
 

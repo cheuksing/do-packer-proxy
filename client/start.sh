@@ -26,6 +26,9 @@ HTTP_LISTEN="${HTTP_LISTEN:-127.0.0.1}"
 HTTP_PORT="${HTTP_PORT:-1081}"
 FINGERPRINT="${FINGERPRINT:-chrome}"
 FLOW="${FLOW:-xtls-rprx-vision}"
+# split tunnel: comma-separated domains to tunnel through the server; all other
+# traffic goes direct. Empty = full tunnel (everything through the server).
+SPLIT_DOMAINS="${SPLIT_DOMAINS:-}"
 export SOCKS_LISTEN SOCKS_PORT HTTP_LISTEN HTTP_PORT FINGERPRINT FLOW
 
 # required settings
@@ -40,8 +43,28 @@ command -v xray >/dev/null 2>&1 || {
 
 mkdir -p "$GEN_DIR"
 
+# build routing rules (pure bash): split tunnel if SPLIT_DOMAINS set, else full tunnel
+build_routing_rules() {
+  local domains="" d
+  IFS=',' read -ra doms <<< "$SPLIT_DOMAINS"
+  for d in "${doms[@]}"; do
+    d="${d#"${d%%[![:space:]]*}"}"   # trim leading whitespace
+    d="${d%"${d##*[![:space:]]}"}"   # trim trailing whitespace
+    [ -n "$d" ] || continue
+    [ -n "$domains" ] && domains="$domains, "
+    domains="$domains\"$d\""
+  done
+  if [ -n "$domains" ]; then
+    printf '    { "type": "field", "domain": [%s], "outboundTag": "proxy" },\n    { "type": "field", "network": "tcp,udp", "outboundTag": "direct" }\n' "$domains"
+  else
+    printf '    { "type": "field", "network": "tcp,udp", "outboundTag": "proxy" }\n'
+  fi
+}
+ROUTING_RULES="$(build_routing_rules)"
+export ROUTING_RULES
+
 # render config from template (pure bash)
-RENDER_VARS=(SERVER_ADDR SERVER_PORT UUID REALITY_PUBLIC_KEY REALITY_SHORT_ID REALITY_SNI SOCKS_LISTEN SOCKS_PORT HTTP_LISTEN HTTP_PORT FINGERPRINT FLOW)
+RENDER_VARS=(SERVER_ADDR SERVER_PORT UUID REALITY_PUBLIC_KEY REALITY_SHORT_ID REALITY_SNI SOCKS_LISTEN SOCKS_PORT HTTP_LISTEN HTTP_PORT FINGERPRINT FLOW ROUTING_RULES)
 render_line() {
   local l="$1" var
   for var in "${RENDER_VARS[@]}"; do
@@ -57,8 +80,13 @@ render_line() {
 } > "$CONFIG"
 
 echo "config rendered -> $CONFIG"
-echo "SOCKS proxy: socks5://$SOCKS_LISTEN:$SOCKS_PORT  ->  $SERVER_ADDR:$SERVER_PORT (VLESS+REALITY)"
-echo "HTTP  proxy: http://$HTTP_LISTEN:$HTTP_PORT  ->  $SERVER_ADDR:$SERVER_PORT (VLESS+REALITY)"
+if [ -n "$SPLIT_DOMAINS" ]; then
+  echo "split tunnel ON:  $SPLIT_DOMAINS  ->  $SERVER_ADDR:$SERVER_PORT (VLESS+REALITY); everything else direct"
+else
+  echo "full tunnel ON:   all traffic  ->  $SERVER_ADDR:$SERVER_PORT (VLESS+REALITY)"
+fi
+echo "SOCKS proxy: socks5://$SOCKS_LISTEN:$SOCKS_PORT"
+echo "HTTP  proxy: http://$HTTP_LISTEN:$HTTP_PORT"
 echo "press Ctrl+C to stop"
 echo $$ > "$PID_FILE"
 exec xray run -c "$CONFIG"

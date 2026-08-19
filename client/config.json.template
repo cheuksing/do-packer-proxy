@@ -21,6 +21,7 @@
   "outbounds": [
     {
       "protocol": "vless",
+      "tag": "proxy",
       "settings": {
         "vnext": [
           {
@@ -46,6 +47,16 @@
           "shortId": "$REALITY_SHORT_ID"
         }
       }
+    },
+    {
+      "protocol": "freedom",
+      "tag": "direct"
     }
-  ]
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+$ROUTING_RULES
+    ]
+  }
 }
