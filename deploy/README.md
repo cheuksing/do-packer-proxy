@@ -38,7 +38,7 @@ All values are optional except `DO_API_KEY`.
 
 ```bash
 cd deploy
-cp .env.example .env
+cp -p .env.example .env # use 600 permissions on .env
 # edit .env: set DO_API_KEY (and optionally REGION/SIZE/IMAGE/DROPLET_NAME/
 # DEPLOY_USER/ADMIN_USER/SSH_PORT/REALITY_SNI/REALITY_DEST)
 ./deploy.sh

@@ -47,7 +47,7 @@ Only needs SSH access to the server from *this* machine (as `deploy-user`):
 
 ```bash
 cd client
-cp .env.example .env
+cp -p .env.example .env # use 600 permissions on .env
 # edit .env: set SERVER_ADDR (the droplet IP) and SSH_KEY (path to a private
 # key that can log in as deploy-user on THIS machine - see key note below)
 ./fetch-params.sh
