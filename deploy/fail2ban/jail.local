@@ -1,0 +1,18 @@
+[sshd]
+enabled = true
+port = {{SSH_PORT}}
+backend = systemd
+maxretry = 5
+findtime = 600
+bantime = 3600
+
+[xray-reality]
+enabled = true
+port = 443
+filter = xray-reality
+logpath = /var/log/xray/access.log
+backend = polling
+maxretry = 3
+findtime = 600
+bantime = 3600
+action = iptables-multiport[name=xray-reality, port="443", protocol=tcp]

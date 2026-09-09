@@ -1,0 +1,62 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "listen": "$SOCKS_LISTEN",
+      "port": $SOCKS_PORT,
+      "protocol": "socks",
+      "settings": {
+        "udp": true
+      }
+    },
+    {
+      "listen": "$HTTP_LISTEN",
+      "port": $HTTP_PORT,
+      "protocol": "http",
+      "settings": {}
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "vless",
+      "tag": "proxy",
+      "settings": {
+        "vnext": [
+          {
+            "address": "$SERVER_ADDR",
+            "port": $SERVER_PORT,
+            "users": [
+              {
+                "id": "$UUID",
+                "encryption": "none",
+                "flow": "$FLOW"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "$REALITY_SNI",
+          "fingerprint": "$FINGERPRINT",
+          "publicKey": "$REALITY_PUBLIC_KEY",
+          "shortId": "$REALITY_SHORT_ID"
+        }
+      }
+    },
+    {
+      "protocol": "freedom",
+      "tag": "direct"
+    }
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+$ROUTING_RULES
+    ]
+  }
+}
