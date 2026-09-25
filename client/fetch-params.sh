@@ -81,4 +81,4 @@ for key in SERVER_ADDR SERVER_PORT UUID REALITY_PUBLIC_KEY REALITY_SHORT_ID REAL
 done
 mv "$TMP_ENV" "$ENV_FILE"
 
-echo "updated $ENV_FILE - run ./start.sh to start the client"
+echo "updated $ENV_FILE - run ./update-config.sh && ./start.sh to start the client"

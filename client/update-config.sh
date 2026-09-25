@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Render the VLESS REALITY client config from .env.
+set -euo pipefail
+
+CLIENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$CLIENT_DIR/.env"
+TEMPLATE="$CLIENT_DIR/config.json.template"
+GEN_DIR="$CLIENT_DIR/.generated"
+CONFIG="$GEN_DIR/config.json"
+
+if [ ! -f "$ENV_FILE" ]; then
+  echo "FATAL: $ENV_FILE missing - copy .env.example to .env and fill it in" >&2
+  exit 1
+fi
+
+set -a
+. "$ENV_FILE"
+set +a
+
+# defaults for optional settings
+SOCKS_LISTEN="${SOCKS_LISTEN:-127.0.0.1}"
+SOCKS_PORT="${SOCKS_PORT:-1080}"
+HTTP_LISTEN="${HTTP_LISTEN:-127.0.0.1}"
+HTTP_PORT="${HTTP_PORT:-1081}"
+FINGERPRINT="${FINGERPRINT:-chrome}"
+FLOW="${FLOW:-xtls-rprx-vision}"
+# split tunnel: comma-separated domains to tunnel through the server; all other
+# traffic goes direct. Empty = full tunnel (everything through the server).
+SPLIT_DOMAINS="${SPLIT_DOMAINS:-}"
+export SOCKS_LISTEN SOCKS_PORT HTTP_LISTEN HTTP_PORT FINGERPRINT FLOW
+
+# required settings
+for var in SERVER_ADDR SERVER_PORT UUID REALITY_PUBLIC_KEY REALITY_SHORT_ID REALITY_SNI; do
+  [ -n "${!var:-}" ] || { echo "FATAL: $var is empty in $ENV_FILE" >&2; exit 1; }
+done
+
+mkdir -p "$GEN_DIR"
+
+# build routing rules (pure bash): split tunnel if SPLIT_DOMAINS set, else full tunnel
+build_routing_rules() {
+  local domains="" d
+  IFS=',' read -ra doms <<< "$SPLIT_DOMAINS"
+  for d in "${doms[@]}"; do
+    d="${d#"${d%%[![:space:]]*}"}"   # trim leading whitespace
+    d="${d%"${d##*[![:space:]]}"}"   # trim trailing whitespace
+    [ -n "$d" ] || continue
+    [ -n "$domains" ] && domains="$domains, "
+    domains="$domains\"$d\""
+  done
+  if [ -n "$domains" ]; then
+    printf '    { "type": "field", "domain": [%s], "outboundTag": "proxy" },\n    { "type": "field", "network": "tcp,udp", "outboundTag": "direct" }\n' "$domains"
+  else
+    printf '    { "type": "field", "network": "tcp,udp", "outboundTag": "proxy" }\n'
+  fi
+}
+ROUTING_RULES="$(build_routing_rules)"
+export ROUTING_RULES
+
+# render config from template (pure bash)
+RENDER_VARS=(SERVER_ADDR SERVER_PORT UUID REALITY_PUBLIC_KEY REALITY_SHORT_ID REALITY_SNI SOCKS_LISTEN SOCKS_PORT HTTP_LISTEN HTTP_PORT FINGERPRINT FLOW ROUTING_RULES)
+render_line() {
+  local l="$1" var
+  for var in "${RENDER_VARS[@]}"; do
+    l="${l//\$$var/${!var}}"
+  done
+  printf '%s' "$l"
+}
+
+{
+  while IFS= read -r line || [ -n "$line" ]; do
+    printf '%s\n' "$(render_line "$line")"
+  done < "$TEMPLATE"
+} > "$CONFIG"
+
+echo "config rendered -> $CONFIG"
+if [ -n "$SPLIT_DOMAINS" ]; then
+  echo "split tunnel ON:  $SPLIT_DOMAINS  ->  $SERVER_ADDR:$SERVER_PORT (VLESS+REALITY); everything else direct"
+else
+  echo "full tunnel ON:   all traffic  ->  $SERVER_ADDR:$SERVER_PORT (VLESS+REALITY)"
+fi
+echo "SOCKS proxy: socks5://$SOCKS_LISTEN:$SOCKS_PORT"
+echo "HTTP  proxy: http://$HTTP_LISTEN:$HTTP_PORT"

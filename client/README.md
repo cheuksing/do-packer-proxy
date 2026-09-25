@@ -7,7 +7,8 @@ VLESS+REALITY server. Uses `xray-core` - the same binary as the server.
 client/
 ├── .env.example           # all options (copy to .env)
 ├── config.json.template   # SOCKS + HTTP inbounds, VLESS/REALITY + direct outbounds, split-tunnel routing
-├── start.sh               # render config from .env, run xray (foreground)
+├── update-config.sh       # render config.json from .env
+├── start.sh               # run xray with the generated config (foreground)
 ├── stop.sh                # stop the client
 ├── status.sh              # is it running? are the proxy ports up?
 └── fetch-params.sh        # pull connection params from the server into .env
@@ -75,9 +76,10 @@ into `.env` yourself.
 ## 3. Run
 
 ```bash
-./start.sh      # renders client/.generated/config.json, runs xray in foreground
-./status.sh     # running? SOCKS/HTTP ports listening?
-./stop.sh       # stop the client
+./update-config.sh # render client/.generated/config.json from .env
+./start.sh         # run xray in foreground with the generated config
+./status.sh        # running? SOCKS/HTTP ports listening?
+./stop.sh         # stop the client
 ```
 
 ## 4. Route traffic through the proxy
@@ -119,12 +121,14 @@ SPLIT_DOMAINS=opencode.ai,chatgpt.com,api.openai.com     # comma-separated; subd
 
 With `SPLIT_DOMAINS` set, only matching hostnames go through the VLESS+REALITY
 tunnel; all other traffic through the proxies exits from your local connection.
-Remove the line (or leave it empty) to go back to full tunnel. Restart the
-client (`./stop.sh && ./start.sh`) after changing it.
+Remove the line (or leave it empty) to go back to full tunnel. Re-render the
+config and restart the client (`./update-config.sh && ./stop.sh && ./start.sh`)
+after changing it.
 
 ## Troubleshooting
 
 - `xray: command not found` in start.sh -> xray-core not in PATH (step 1)
+- generated config missing -> run `./update-config.sh` before `./start.sh`
 - Connection fails -> re-check the 5 required fields in `.env` against
   `client-params.txt` (UUID / publicKey / shortId / SNI must match the server);
   re-run `./fetch-params.sh`
